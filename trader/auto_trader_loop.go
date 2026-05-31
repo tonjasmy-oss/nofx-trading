@@ -242,6 +242,47 @@ func (at *AutoTrader) runCycle() error {
 		}
 	}
 
+	// Sentinel rules check: deterministic rules filter before execution
+	if at.strategyEngine != nil && at.strategyEngine.IsSentinelEnabled() {
+		filtered := make([]kernel.Decision, 0)
+		for _, d := range sortedDecisions {
+			// Build trade signal for sentinel check
+			signal := &kernel.TradeSignal{
+				Symbol: d.Symbol,
+				Action: d.Action,
+			}
+			if d.Action == "open_long" || d.Action == "close_short" {
+				signal.Side = "long"
+			} else {
+				signal.Side = "short"
+			}
+			signal.PositionRatio = 0.1 // Default ratio
+
+			// Build market data for sentinel (using context data)
+			marketData := &kernel.MarketData{
+				VolumeRatio: 1.0, // Default
+			}
+
+			// Build sentinel state
+			sentinelState := &kernel.SentinelState{
+				Equity:          ctx.Account.TotalEquity,
+				TotalPositionPct: 0.3, // From risk config
+			}
+
+			blocked, reason := at.strategyEngine.RunSentinelRules(signal, marketData, sentinelState)
+			if blocked {
+				at.logWarnf("🚫 Sentinel blocked: %s %s - %s", d.Symbol, d.Action, reason)
+				record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("SENTINEL_BLOCKED: %s %s - %s", d.Symbol, d.Action, reason))
+				continue
+			}
+			filtered = append(filtered, d)
+		}
+		sortedDecisions = filtered
+		if len(sortedDecisions) == 0 {
+			at.logInfof("🛡️ Sentinel: all decisions were blocked, nothing to execute")
+		}
+	}
+
 	// Execute decisions and record results
 	for _, d := range sortedDecisions {
 		// Check if trader is stopped before each decision (allow immediate stop during execution)

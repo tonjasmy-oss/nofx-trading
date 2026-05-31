@@ -185,6 +185,7 @@ type OIDeltaData struct {
 type StrategyEngine struct {
 	config       *store.StrategyConfig
 	nofxosClient *nofxos.Client
+	sentinel     *SentinelConfig // Sentinel configuration for deterministic rule enforcement
 }
 
 // NewStrategyEngine creates strategy execution engine.
@@ -262,6 +263,32 @@ func (e *StrategyEngine) GetLanguage() Language {
 // GetConfig gets complete strategy configuration
 func (e *StrategyEngine) GetConfig() *store.StrategyConfig {
 	return e.config
+}
+
+// SetSentinelConfig sets the sentinel configuration for deterministic rule enforcement
+func (e *StrategyEngine) SetSentinelConfig(cfg *SentinelConfig) {
+	e.sentinel = cfg
+}
+
+// GetSentinelConfig gets the sentinel configuration
+func (e *StrategyEngine) GetSentinelConfig() *SentinelConfig {
+	return e.sentinel
+}
+
+// IsSentinelEnabled returns true if sentinel is enabled
+func (e *StrategyEngine) IsSentinelEnabled() bool {
+	return e.sentinel != nil && e.sentinel.Enabled
+}
+
+// RunSentinelRules runs sentinel rules against a trade signal
+// Returns (blocked bool, reason string)
+func (e *StrategyEngine) RunSentinelRules(signal *TradeSignal, marketData *MarketData, state *SentinelState) (bool, string) {
+	if e.sentinel == nil || !e.sentinel.Enabled {
+		return false, ""
+	}
+
+	engine := NewSentinelRuleEngine(e.sentinel, nil)
+	return engine.RunSentinelRules(signal, marketData, state)
 }
 
 // ============================================================================

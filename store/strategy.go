@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -1484,4 +1485,133 @@ func (c *StrategyConfig) getEffectiveTimeframeCount() int {
 		count++
 	}
 	return count
+}
+
+// ============================================================================
+// Indicator Signal Storage (for deterministic trading signals)
+// ============================================================================
+
+// IndicatorSignal represents a computed technical indicator signal
+type IndicatorSignal struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	TraderID  string    `gorm:"column:trader_id;index" json:"trader_id"`
+	Symbol    string    `gorm:"column:symbol;index" json:"symbol"`
+	Indicator string    `gorm:"column:indicator;index" json:"indicator"`
+	Signal    int       `json:"signal"`   // 1 (buy), -1 (sell), 0 (neutral)
+	Strength  float64   `json:"strength"` // 0.0-1.0
+	Value     float64   `json:"value"`    // actual indicator value (e.g., RSI value)
+	Params    string    `gorm:"column:params;default:''" json:"params"` // JSON params
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// TableName returns the table name for IndicatorSignal
+func (IndicatorSignal) TableName() string { return "indicator_signals" }
+
+// IndicatorSignalStore manages indicator signal storage
+type IndicatorSignalStore struct {
+	db    *gorm.DB
+	cache map[string]*IndicatorSignal // in-memory cache for latest signals
+	mu    sync.RWMutex
+}
+
+// NewIndicatorSignalStore creates a new IndicatorSignalStore
+func NewIndicatorSignalStore(db *gorm.DB) *IndicatorSignalStore {
+	return &IndicatorSignalStore{
+		db:    db,
+		cache: make(map[string]*IndicatorSignal),
+	}
+}
+
+// initTables creates the indicator_signals table
+func (s *IndicatorSignalStore) initTables() error {
+	return s.db.AutoMigrate(&IndicatorSignal{})
+}
+
+// AddIndicatorConfig stores indicator configuration for a symbol
+// This is a no-op for now as we use in-memory caching for indicator signals
+func (s *IndicatorSignalStore) AddIndicatorConfig(traderID, symbol, indicator string, params map[string]float64) error {
+	// For now, we store indicator config in memory cache
+	// In a full implementation, this would be stored in database
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := fmt.Sprintf("%s:%s:%s", traderID, symbol, indicator)
+	paramsJSON, _ := json.Marshal(params)
+
+	s.cache[key] = &IndicatorSignal{
+		TraderID: traderID,
+		Symbol:   symbol,
+		Indicator: indicator,
+		Params:   string(paramsJSON),
+		CreatedAt: time.Now(),
+	}
+	return nil
+}
+
+// GetIndicatorSignal retrieves the latest indicator signal
+func (s *IndicatorSignalStore) GetIndicatorSignal(traderID, symbol, indicator string) *IndicatorSignal {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	key := fmt.Sprintf("%s:%s:%s", traderID, symbol, indicator)
+	if sig, ok := s.cache[key]; ok {
+		return sig
+	}
+	return nil
+}
+
+// StoreIndicatorSignal stores an indicator signal
+func (s *IndicatorSignalStore) StoreIndicatorSignal(signal *IndicatorSignal) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Store in database
+	if err := s.db.Create(signal).Error; err != nil {
+		return fmt.Errorf("failed to store indicator signal: %w", err)
+	}
+
+	// Update cache
+	key := fmt.Sprintf("%s:%s:%s", signal.TraderID, signal.Symbol, signal.Indicator)
+	s.cache[key] = signal
+
+	return nil
+}
+
+// GetRecentSignals returns recent indicator signals for a trader/symbol
+func (s *IndicatorSignalStore) GetRecentSignals(traderID, symbol, indicator string, limit int) ([]IndicatorSignal, error) {
+	var signals []IndicatorSignal
+	err := s.db.Where("trader_id = ? AND symbol = ? AND indicator = ?", traderID, symbol, indicator).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&signals).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent signals: %w", err)
+	}
+	return signals, nil
+}
+
+// GetLatestSignalsBySymbol returns the latest indicator signals for a symbol across all indicators
+func (s *IndicatorSignalStore) GetLatestSignalsBySymbol(traderID, symbol string) ([]IndicatorSignal, error) {
+	var signals []IndicatorSignal
+
+	// Get distinct indicators for this symbol
+	err := s.db.Where("trader_id = ? AND symbol = ?", traderID, symbol).
+		Order("created_at DESC").
+		Find(&signals).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest signals: %w", err)
+	}
+
+	// Deduplicate by indicator (keep latest for each)
+	seen := make(map[string]bool)
+	unique := make([]IndicatorSignal, 0)
+	for _, sig := range signals {
+		key := sig.Indicator
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, sig)
+		}
+	}
+
+	return unique, nil
 }
