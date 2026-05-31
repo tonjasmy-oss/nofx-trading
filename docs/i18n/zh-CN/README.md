@@ -8,9 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/NoFxAiOS/nofx/stargazers"><img src="https://img.shields.io/github/stars/NoFxAiOS/nofx?style=for-the-badge" alt="Stars"></a>
+  <a href="https://github.com/tonjasmy-oss/nofx-trading/stargazers"><img src="https://img.shields.io/github/stars/tonjasmy-oss/nofx-trading?style=for-the-badge" alt="Stars"></a>
   <a href="https://github.com/NoFxAiOS/nofx/releases"><img src="https://img.shields.io/github/v/release/NoFxAiOS/nofx?style=for-the-badge" alt="Release"></a>
-  <a href="https://github.com/NoFxAiOS/nofx/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=for-the-badge" alt="License"></a>
+  <a href="https://github.com/tonjasmy-oss/nofx-trading/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=for-the-badge" alt="License"></a>
   <a href="https://t.me/nofx_dev_community"><img src="https://img.shields.io/badge/Telegram-Community-blue?style=for-the-badge&logo=telegram" alt="Telegram"></a>
 </p>
 
@@ -38,7 +38,7 @@ NOFX 是一个开源 AI 交易终端，面向需要统一工作区完成市场�
 产品围绕全球高流动性市场设计：美股、大宗商品合约、外汇货币对与数字资产。AI 层将交易意图转化为观察列表、信号、策略逻辑、风控约束与执行工作流。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/install.sh | bash
 ```
 
 打开 **http://127.0.0.1:3000**。
@@ -109,6 +109,56 @@ NOFX 自动通过 [Claw402](https://claw402.ai) 路由 AI 推理请求。用户�
 
 ---
 
+## 增强交易功能
+
+本 Fork 在原版基础上新增了一套完整的交易与风控增强模块：
+
+### 技术指标（`kernel/indicators.go`）
+
+| 指标 | 说明 |
+| :--- | :--- |
+| **RSI** | 相对强弱指数（默认 14 周期） |
+| **EMA** | 指数移动平均线，支持自定义周期 |
+| **MACD** | 移动平均收敛/发散（12/26/9） |
+| **布林带** | 中轨 ± 标准差，可配置宽度 |
+| **ATR** | 平均真实波幅，衡量波动率 |
+| **成交量比率** | 当前成交量与均量比值 |
+
+### Sentinel 风控引擎（`kernel/sentinel.go`）
+
+基于 **敏霞笙（MenXiaSheng）八规则风控体系**构建的规则引擎，代号 R1–R8：
+
+| 规则 | 说明 |
+| :--- | :--- |
+| **R1** | 仓位上限 — 拒绝超过总权益 `MaxPositionPct` 的交易 |
+| **R2** | 频率限制 — 拒绝在 `FreqLookbackMins` 内对同一币种频繁交易 |
+| **R3** | EMA 方向对齐 — 信号方向必须与 EMA 趋势一致 |
+| **R4** | 成交量过滤 — 成交量低于 `MinVolumeRatio` 时阻止信号 |
+| **R5** | 连亏冷却 — 连续亏损 `MaxConsecutiveLoss` 次后停止开仓 |
+| **R6** | 回撤限制 — 回撤超 `MaxDrawdownPct` 时拒绝新交易 |
+| **R7** | 持仓时间限制 — 强制持有 `MinPositionHours` 后才允许平仓 |
+| **R8** | 单币种敞口上限 — 单个币种敞口不超过 `MaxSingleExposure` |
+
+引擎支持两种模式：
+- **`block`**（默认）— 在执行前直接拒绝违规信号
+- **`alert`** — 仅记录警告，但仍允许执行（可配置）
+
+### 组合追踪器（`kernel/portfolio.go`）
+
+- 实时权益与持仓状态追踪
+- 分币种未实现盈亏计算
+- 支持做多与做空持仓
+- 数量归零时自动清理持仓记录
+
+### 市场状态识别（`market/regime.go`）
+
+- 识别三类市场状态：**趋势（trending）/ 区间（flat）/ 波动（volatile）**
+- 计算 ATR 及 ATR 价格占比，用于波动率分析
+- 识别关键支撑/阻力位（Pivot、S1/R1、S2/R2）
+- 追踪近 20 周期高低点
+
+---
+
 ## 截图
 
 <details>
@@ -162,7 +212,7 @@ NOFX 自动通过 [Claw402](https://claw402.ai) 路由 AI 推理请求。用户�
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/install.sh | bash
 ```
 
 ### Railway（云部署）
@@ -172,7 +222,7 @@ curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bas
 ### Docker
 
 ```bash
-curl -O https://raw.githubusercontent.com/NoFxAiOS/nofx/main/docker-compose.prod.yml
+curl -O https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/docker-compose.prod.yml
 docker compose -f docker-compose.prod.yml up -d
 ```
 
@@ -181,26 +231,23 @@ docker compose -f docker-compose.prod.yml up -d
 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)，然后：
 
 ```powershell
-curl -o docker-compose.prod.yml https://raw.githubusercontent.com/NoFxAiOS/nofx/main/docker-compose.prod.yml
+curl -o docker-compose.prod.yml https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/docker-compose.prod.yml
 docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### 从源码构建
 
 ```bash
-# Prerequisites: Go 1.21+, Node.js 18+, TA-Lib
-# macOS: brew install ta-lib
-# Ubuntu: sudo apt-get install libta-lib0-dev
-
-git clone https://github.com/NoFxAiOS/nofx.git && cd nofx
-go build -o nofx && ./nofx
-cd web && npm install && npm run dev
+# 前置条件：Go 1.21+、Node.js 18+
+git clone https://github.com/tonjasmy-oss/nofx-trading.git && cd nofx-trading
+go build -o nofx && ./nofx          # 后端
+cd web && npm install && npm run dev  # 前端（新终端）
 ```
 
 ### 更新
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/install.sh | bash
 ```
 
 ---
@@ -226,7 +273,7 @@ curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bas
 **HTTP 部署：**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/install.sh | bash
 # 通过 http://YOUR_IP:3000 访问
 ```
 
@@ -246,7 +293,7 @@ curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bas
     ┌─────────────────────────────────────────────────┐
     │                 Trading Terminal                 │
     │        React + TypeScript + TradingView          │
-    │      US Stocks · Commodities · Forex · Crypto    │
+    │      US Stocks · Commodities · Forex · Crypto   │
     ├─────────────────────────────────────────────────┤
     │                  API Server (Go)                  │
     ├──────────────┬──────────────┬───────────────────┤
@@ -254,13 +301,26 @@ curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bas
     │    Engine     │    Agent     │   Risk Controls   │
     ├──────────────┴──────────────┴───────────────────┤
     │                 AI Model Layer                    │
-    │    Unified provider access through Claw402        │
-    │    Model routing · payment · execution support    │
+    │    Unified provider access through Claw402      │
+    │    Model routing · payment · execution support  │
     ├─────────────────────────────────────────────────┤
     │              Exchange Connectivity                │
-    │ Binance · Bybit · OKX · Hyperliquid · Bitget     │
-    │ KuCoin · Gate · Aster · Lighter                  │
+    │ Binance · Bybit · OKX · Hyperliquid · Bitget    │
+    │ KuCoin · Gate · Aster · Lighter                 │
     └─────────────────────────────────────────────────┘
+```
+
+本 Fork 增强层：
+
+```
+    ┌─────────────────────────────────────────────────┐
+    │           Sentinel Risk Engine (R1–R8)            │
+    ├─────────────┬──────────────┬────────────────────┤
+    │   Indicators │  Portfolio   │  Market Regime     │
+    │  RSI/EMA/    │   Tracker    │  Detection         │
+    │  MACD/BB/ATR │              │  trending/flat/    │
+    │  /VolumeRatio│              │  volatile          │
+    └─────────────┴──────────────┴────────────────────┘
 ```
 
 ---

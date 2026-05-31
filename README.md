@@ -8,9 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/NoFxAiOS/nofx/stargazers"><img src="https://img.shields.io/github/stars/NoFxAiOS/nofx?style=for-the-badge" alt="Stars"></a>
+  <a href="https://github.com/tonjasmy-oss/nofx-trading/stargazers"><img src="https://img.shields.io/github/stars/tonjasmy-oss/nofx-trading?style=for-the-badge" alt="Stars"></a>
   <a href="https://github.com/NoFxAiOS/nofx/releases"><img src="https://img.shields.io/github/v/release/NoFxAiOS/nofx?style=for-the-badge" alt="Release"></a>
-  <a href="https://github.com/NoFxAiOS/nofx/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=for-the-badge" alt="License"></a>
+  <a href="https://github.com/tonjasmy-oss/nofx-trading/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=for-the-badge" alt="License"></a>
   <a href="https://t.me/nofx_dev_community"><img src="https://img.shields.io/badge/Telegram-Community-blue?style=for-the-badge&logo=telegram" alt="Telegram"></a>
 </p>
 
@@ -36,7 +36,7 @@ NOFX is an open-source AI trading terminal for active traders who want one works
 The product is built around global liquid markets: US equities, commodity contracts, FX pairs, and digital assets. The AI layer helps translate market intent into watchlists, signals, strategy logic, risk controls, and execution workflows.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/install.sh | bash
 ```
 
 Open **http://127.0.0.1:3000**.
@@ -99,11 +99,60 @@ NOFX routes AI inference through [Claw402](https://claw402.ai) automatically. Us
 | :-------------------------- | :-------------------------------------------------------------------------- |
 | **AI trading terminal**     | Unified workspace for US stocks, commodities, forex, and crypto workflows   |
 | **AI model access**         | Unified model access through Claw402-supported providers                    |
-| **Exchange connectivity**   | Binance, Bybit, OKX, Hyperliquid, Bitget, KuCoin, Gate, Aster, and Lighter  |
+| **Exchange connectivity**   | Binance, Bybit, OKX, Hyperliquid, Bitget, KuCoin, Gate, Aster, and Lighter |
 | **Strategy Studio**         | Market universes, indicators, risk controls, and strategy logic             |
-| **Model competition**       | Compare model-driven traders with live performance and leaderboard tracking  |
+| **Model competition**       | Compare model-driven traders with live performance and leaderboard tracking |
 | **Telegram agent**          | Control and monitor the trading assistant through chat                      |
-| **Portfolio dashboard**     | Positions, P/L, execution history, and model decision logs                  |
+| **Portfolio dashboard**     | Positions, P/L, execution history, and model decision logs                |
+
+---
+
+## Enhanced Trading Features
+
+This fork adds a suite of enhanced trading and risk management capabilities:
+
+### Technical Indicators (`kernel/indicators.go`)
+
+- **RSI** — Relative Strength Index (14-period default)
+- **EMA** — Exponential Moving Average with configurable period
+- **MACD** — Moving Average Convergence/Divergence (12/26/9)
+- **Bollinger Bands** — Upper/Lower bands with configurable std deviation
+- **ATR** — Average True Range for volatility measurement
+- **Volume Ratio** — Compares current volume to moving average
+
+### Sentinel Risk Engine (`kernel/sentinel.go`)
+
+A configurable rule-based risk guard inspired by the **MenXiaSheng (敏霞笙) 8-Rule System**:
+
+| Rule | Description |
+| :--- | :---------- |
+| **R1** | Position size limit — blocks trades exceeding `MaxPositionPct` of total equity |
+| **R2** | Frequency limit — blocks excessive trades per symbol within `FreqLookbackMins` |
+| **R3** | EMA alignment — requires signal direction to align with EMA trend |
+| **R4** | Volume filter — blocks signals with volume below `MinVolumeRatio` threshold |
+| **R5** | Consecutive loss cooldown — stops trading after `MaxConsecutiveLoss` consecutive losses |
+| **R6** | Drawdown limit — rejects new trades when drawdown exceeds `MaxDrawdownPct` |
+| **R7** | Position holding time — enforces minimum `MinPositionHours` before close |
+| **R8** | Single-symbol exposure cap — limits exposure to one symbol to `MaxSingleExposure` |
+
+The engine operates in two modes:
+- **`block`** (default) — reject violating signals before execution
+- **`alert`** — log warnings but allow execution (configurable)
+
+### Portfolio Tracker (`kernel/portfolio.go`)
+
+- Real-time equity and position tracking
+- Per-symbol unrealized P/L calculation
+- Support for long and short positions
+- Automatic position cleanup on zero quantity
+
+### Market Regime Detection (`market/regime.go`)
+
+- Detects market regime: **trending / flat / volatile**
+- Calculates ATR and ATR percentage for volatility context
+- Identifies key support/resistance levels (Pivot, S1/R1, S2/R2)
+- Tracks recent highs and lows over configurable lookback
+- Trend slope normalization for regime classification
 
 ---
 
@@ -160,7 +209,7 @@ NOFX routes AI inference through [Claw402](https://claw402.ai) automatically. Us
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/install.sh | bash
 ```
 
 ### Railway (Cloud)
@@ -170,7 +219,7 @@ curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bas
 ### Docker
 
 ```bash
-curl -O https://raw.githubusercontent.com/NoFxAiOS/nofx/main/docker-compose.prod.yml
+curl -O https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/docker-compose.prod.yml
 docker compose -f docker-compose.prod.yml up -d
 ```
 
@@ -179,18 +228,15 @@ docker compose -f docker-compose.prod.yml up -d
 Install [Docker Desktop](https://www.docker.com/products/docker-desktop/), then:
 
 ```powershell
-curl -o docker-compose.prod.yml https://raw.githubusercontent.com/NoFxAiOS/nofx/main/docker-compose.prod.yml
+curl -o docker-compose.prod.yml https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/docker-compose.prod.yml
 docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### From Source
 
 ```bash
-# Prerequisites: Go 1.21+, Node.js 18+, TA-Lib
-# macOS: brew install ta-lib
-# Ubuntu: sudo apt-get install libta-lib0-dev
-
-git clone https://github.com/NoFxAiOS/nofx.git && cd nofx
+# Prerequisites: Go 1.21+, Node.js 18+
+git clone https://github.com/tonjasmy-oss/nofx-trading.git && cd nofx-trading
 go build -o nofx && ./nofx          # backend
 cd web && npm install && npm run dev  # frontend (new terminal)
 ```
@@ -198,7 +244,7 @@ cd web && npm install && npm run dev  # frontend (new terminal)
 ### Update
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/install.sh | bash
 ```
 
 ---
@@ -224,7 +270,7 @@ All configuration is available from the web UI at **http://127.0.0.1:3000**.
 **HTTP deployment:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/install.sh | bash
 # Access via http://YOUR_IP:3000
 ```
 
@@ -244,7 +290,7 @@ curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bas
     ┌─────────────────────────────────────────────────┐
     │                 Trading Terminal                 │
     │        React + TypeScript + TradingView          │
-    │      US Stocks · Commodities · Forex · Crypto    │
+    │      US Stocks · Commodities · Forex · Crypto   │
     ├─────────────────────────────────────────────────┤
     │                  API Server (Go)                  │
     ├──────────────┬──────────────┬───────────────────┤
@@ -252,13 +298,26 @@ curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bas
     │    Engine     │    Agent     │   Risk Controls   │
     ├──────────────┴──────────────┴───────────────────┤
     │                 AI Model Layer                    │
-    │    Unified provider access through Claw402        │
+    │    Unified provider access through Claw402       │
     │    Model routing · payment · execution support    │
     ├─────────────────────────────────────────────────┤
-    │              Exchange Connectivity                │
+    │              Exchange Connectivity               │
     │ Binance · Bybit · OKX · Hyperliquid · Bitget     │
     │ KuCoin · Gate · Aster · Lighter                  │
     └─────────────────────────────────────────────────┘
+```
+
+Enhanced layer in this fork:
+
+```
+    ┌─────────────────────────────────────────────────┐
+    │           Sentinel Risk Engine (R1–R8)            │
+    ├─────────────┬──────────────┬────────────────────┤
+    │   Indicators │  Portfolio   │  Market Regime     │
+    │  RSI/EMA/    │  Tracker     │  Detection          │
+    │  MACD/BB/ATR │              │  trending/flat/     │
+    │  /VolumeRatio│              │  volatile           │
+    └─────────────┴──────────────┴────────────────────┘
 ```
 
 ---
@@ -326,4 +385,4 @@ NOFX tracks meaningful contributions and intends to reward contributors as the e
 
 [AGPL-3.0](LICENSE)
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.com/#NoFxAiOS/nofx&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=tonjasmy-oss/nofx-trading&type=Date)](https://star-history.com/#tonjasmy-oss/nofx-trading&Date)
