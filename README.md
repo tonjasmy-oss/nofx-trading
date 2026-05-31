@@ -95,15 +95,19 @@ NOFX routes AI inference through [Claw402](https://claw402.ai) automatically. Us
 
 ## Capabilities
 
-| Capability                  | Description                                                                 |
-| :-------------------------- | :-------------------------------------------------------------------------- |
-| **AI trading terminal**     | Unified workspace for US stocks, commodities, forex, and crypto workflows   |
-| **AI model access**         | Unified model access through Claw402-supported providers                    |
-| **Exchange connectivity**   | Binance, Bybit, OKX, Hyperliquid, Bitget, KuCoin, Gate, Aster, and Lighter |
-| **Strategy Studio**         | Market universes, indicators, risk controls, and strategy logic             |
-| **Model competition**       | Compare model-driven traders with live performance and leaderboard tracking |
-| **Telegram agent**          | Control and monitor the trading assistant through chat                      |
-| **Portfolio dashboard**     | Positions, P/L, execution history, and model decision logs                |
+|| Capability                  | Description                                                                 |
+|| :-------------------------- | :-------------------------------------------------------------------------- |
+|| **AI trading terminal**     | Unified workspace for US stocks, commodities, forex, and crypto workflows   |
+|| **AI model access**         | Unified model access through Claw402-supported providers                    |
+|| **Exchange connectivity**   | Binance, Bybit, OKX, Hyperliquid, Bitget, KuCoin, Gate, Aster, and Lighter |
+|| **Strategy Studio**         | Market universes, indicators, risk controls, and strategy logic             |
+|| **Model competition**       | Compare model-driven traders with live performance and leaderboard tracking |
+|| **Telegram agent**          | Control and monitor the trading assistant through chat                      |
+|| **Portfolio dashboard**     | Positions, P/L, execution history, and model decision logs                |
+| **Backtest Engine**         | Vectorized backtesting with CoinAnk API, KlineCache, full metrics          |
+| **Strategy Scripting**       | Declarative JSON strategy definitions — crossover/crossunder rules         |
+| **Experiment Runner**        | Grid and random parameter search for strategy optimization                  |
+| **AI Agent Backtest Tool**   | `run_backtest` tool — AI agents run backtests via natural language        |
 
 ---
 
@@ -113,12 +117,48 @@ This fork adds a suite of enhanced trading and risk management capabilities:
 
 ### Technical Indicators (`kernel/indicators.go`)
 
-- **RSI** — Relative Strength Index (14-period default)
-- **EMA** — Exponential Moving Average with configurable period
-- **MACD** — Moving Average Convergence/Divergence (12/26/9)
-- **Bollinger Bands** — Upper/Lower bands with configurable std deviation
-- **ATR** — Average True Range for volatility measurement
-- **Volume Ratio** — Compares current volume to moving average
+| Indicator | Description |
+| :-------- | :---------- |
+| **RSI** | Relative Strength Index (14-period default) |
+| **EMA** | Exponential Moving Average with configurable period |
+| **MACD** | Moving Average Convergence/Divergence (12/26/9) |
+| **Bollinger Bands** | Upper/Lower bands with configurable std deviation |
+| **ATR** | Average True Range for volatility measurement |
+| **Volume Ratio** | Compares current volume to moving average |
+| **SMA** | Simple Moving Average |
+| **StdDev** | Standard deviation |
+| **SuperTrend** | Trend detection using ATR + basis (period, multiplier) |
+| **KDJ** | Stochastic RSI variant — K, D, J lines |
+| **VWAP** | Volume Weighted Average Price |
+| **Bollinger %B** | Price position within Bollinger Bands (0–1 range) |
+| **ADX** | Average Directional Index — trend strength measurement |
+
+### Backtest Engine (`pkg/backtest/`)
+
+Full-featured vectorized backtesting engine for strategy validation:
+
+| Component | Description |
+| :-------- | :---------- |
+| `types.go` | Core types: `KlineBar`, `Position`, `Trade`, `Metrics`, `Result`, `BacktestConfig`, `Strategy` interface |
+| `cache.go` | `KlineCache` — TTL-based (5min intraday / 30min daily) + LRU cap 64, CoinAnk API integration |
+| `run.go` | `Run()` convenience entry — fetches klines, builds strategy, runs backtest |
+| `/api/backtest` | REST endpoint for backtest execution |
+
+**Metrics returned**: Total Return, Sharpe Ratio, Max Drawdown, Win Rate, Profit Factor, Total/Win/Lose Trades, Avg Win/Loss.
+
+### AI Agent Backtest Tool (`agent/tools.go`)
+
+AI agents can now run backtests via natural language:
+
+```
+Tool: run_backtest
+Params: symbol, exchange, interval, start_time, end_time,
+         initial_capital, fast_period, slow_period
+Returns: sharpe_ratio, total_return, max_drawdown, win_rate,
+         profit_factor, total_trades, duration_ms
+```
+
+Example use: *"帮我回测 BTCUSDT 1小时 MA交叉策略，参数 fast=10 slow=30"*
 
 ### Sentinel Risk Engine (`kernel/sentinel.go`)
 
@@ -153,6 +193,39 @@ The engine operates in two modes:
 - Identifies key support/resistance levels (Pivot, S1/R1, S2/R2)
 - Tracks recent highs and lows over configurable lookback
 - Trend slope normalization for regime classification
+
+### Strategy Scripting (`strategy/script.go`)
+
+Declarative JSON strategy definitions parsed into executable backtest strategies:
+
+```json
+{
+  "name": "MA Cross + RSI Filter",
+  "type": "ma_cross",
+  "parameters": { "fast_period": 10, "slow_period": 30 },
+  "rules": [
+    { "type": "crossover", "indicator_a": "EMA_10", "indicator_b": "EMA_30", "direction": "long" },
+    { "type": "crossunder", "indicator_a": "EMA_10", "indicator_b": "EMA_30", "direction": "short" }
+  ]
+}
+```
+
+Supports rule types: `crossover`, `crossunder`, `above`, `below`, `value`.
+Built-in indicators: RSI, EMA_10/30, SMA_20/50, BB_upper/lower, ATR, VolumeRatio.
+
+### LLM Experiment Runner (`pkg/experiment/runner.go`)
+
+Parameter search engine for strategy optimization:
+
+| Mode | Description |
+| :--- | :---------- |
+| **grid** | Exhaustive parameter grid search |
+| **random** | Random sampling over parameter space |
+
+- `Config`: symbol, exchange, interval, time range, parameter space, metric target
+- `Result`: all trials ranked, best params, best metric, duration
+- Metric targets: `sharpe_ratio`, `total_return`, `profit_factor`, `win_rate`
+- Context cancellation support for early stopping
 
 ---
 
@@ -310,14 +383,22 @@ curl -fsSL https://raw.githubusercontent.com/tonjasmy-oss/nofx-trading/main/inst
 Enhanced layer in this fork:
 
 ```
-    ┌─────────────────────────────────────────────────┐
-    │           Sentinel Risk Engine (R1–R8)            │
-    ├─────────────┬──────────────┬────────────────────┤
-    │   Indicators │  Portfolio   │  Market Regime     │
-    │  RSI/EMA/    │  Tracker     │  Detection          │
-    │  MACD/BB/ATR │              │  trending/flat/     │
-    │  /VolumeRatio│              │  volatile           │
-    └─────────────┴──────────────┴────────────────────┘
+    ┌────────────────────────────────────────────────────────────────────┐
+    │             Backtest & Experiment Layer (pkg/)                      │
+    │  ┌─────────────┬──────────────┬─────────────┬──────────────────┐  │
+    │  │  backtest/  │  experiment/ │  strategy/  │  kernel/         │  │
+    │  │  types.go   │  runner.go   │  script.go  │  indicators.go   │  │
+    │  │  cache.go   │  grid+random │  JSON parse │  RSIMA+MACD+BB   │  │
+    │  │  run.go     │  param search│  rules      │  ST+KDJ+VWAP+ADX │  │
+    │  └─────────────┴──────────────┴─────────────┴──────────────────┘  │
+    ├────────────────────────────────────────────────────────────────────┤
+    │             Sentinel Risk Engine (R1–R8)                            │
+    ├─────────────┬──────────────┬─────────────────────────────────────┤
+    │   Indicators │  Portfolio   │  Market Regime                      │
+    │  RSI/EMA/    │  Tracker     │  Detection                          │
+    │  MACD/BB/ATR │              │  trending/flat/                     │
+    │  /VolumeRatio│              │  volatile                           │
+    └─────────────┴──────────────┴────────────────────────────────────┘
 ```
 
 ---
