@@ -15,6 +15,7 @@ import (
 
 	"nofx/kernel"
 	"nofx/mcp"
+	"nofx/pkg/backtest"
 	"nofx/safe"
 	"nofx/security"
 	"nofx/store"
@@ -108,9 +109,11 @@ func plannerToolNamesForDomain(domain string) []string {
 		"get_watchlist", "manage_watchlist",
 		// Trade execution
 		"execute_trade",
-		// Market data
-		"get_market_snapshot", "get_market_price", "get_kline", "search_stock",
-	}
+	// Market data
+	"get_market_snapshot", "get_market_price", "get_kline", "search_stock",
+	// Backtest
+	"run_backtest",
+}
 	switch domain {
 	case "__all__", "":
 		return all
@@ -841,6 +844,55 @@ func buildAgentTools() []mcp.Tool {
 		{
 			Type: "function",
 			Function: mcp.FunctionDef{
+				Name:        "run_backtest",
+				Description: "Run a backtest on a crypto symbol. Returns full performance metrics including total return, Sharpe ratio, max drawdown, win rate, and profit factor. Use this when the user wants to test a trading idea, compare strategies, or evaluate historical performance.",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"symbol": map[string]any{
+							"type":        "string",
+							"description": "Crypto trading symbol, e.g. BTCUSDT, ETHUSDT, SOLUSDT.",
+						},
+						"exchange": map[string]any{
+							"type":        "string",
+							"description": "Exchange name (binance, bybit, okx, hyperliquid, etc). Defaults to binance.",
+						},
+						"interval": map[string]any{
+							"type":        "string",
+							"description": "Kline interval: 1m, 5m, 15m, 30m, 1h, 4h, 1d. Defaults to 1h.",
+						},
+						"start_time": map[string]any{
+							"type":        "number",
+							"description": "Start time as Unix timestamp in milliseconds.",
+						},
+						"end_time": map[string]any{
+							"type":        "number",
+							"description": "End time as Unix timestamp in milliseconds. Defaults to now.",
+						},
+						"initial_capital": map[string]any{
+							"type":        "number",
+							"description": "Initial capital in USD. Defaults to 10000.",
+						},
+						"strategy_type": map[string]any{
+							"type":        "string",
+							"description": "Strategy type: ma_cross (moving average cross). Defaults to ma_cross.",
+						},
+						"fast_period": map[string]any{
+							"type":        "number",
+							"description": "Fast MA period for ma_cross strategy. Defaults to 10.",
+						},
+						"slow_period": map[string]any{
+							"type":        "number",
+							"description": "Slow MA period for ma_cross strategy. Defaults to 30.",
+						},
+					},
+					"required": []string{"symbol"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: mcp.FunctionDef{
 				Name:        "get_candidate_coins",
 				Description: "Get the current candidate coin list for a trader or strategy, including AI500 coin-source settings and the selected symbols.",
 				Parameters: map[string]any{
@@ -938,6 +990,8 @@ func (a *Agent) handleToolCall(ctx context.Context, storeUserID string, userID i
 		return a.toolGetWatchlist(lang)
 	case "manage_watchlist":
 		return a.toolManageWatchlist(lang, tc.Function.Arguments)
+	case "run_backtest":
+		return a.toolRunBacktest(tc.Function.Arguments)
 	default:
 		return fmt.Sprintf(`{"error": "unknown tool: %s"}`, tc.Function.Name)
 	}
@@ -2723,6 +2777,123 @@ func (a *Agent) toolSearchStock(argsJSON string) string {
 		"results": enriched,
 	})
 	return string(result)
+}
+
+func (a *Agent) toolRunBacktest(argsJSON string) string {
+	var args struct {
+		Symbol        string  `json:"symbol"`
+		Exchange      string  `json:"exchange"`
+		Interval      string  `json:"interval"`
+		StartTime     int64   `json:"start_time"`
+		EndTime       int64   `json:"end_time"`
+		InitialCapital float64 `json:"initial_capital"`
+		FastPeriod    int     `json:"fast_period"`
+		SlowPeriod    int     `json:"slow_period"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return fmt.Sprintf(`{"error": "invalid arguments: %s"}`, err)
+	}
+	if args.Symbol == "" {
+		return `{"error": "symbol is required"}`
+	}
+
+	// Build strategy with defaults
+	fastPeriod := args.FastPeriod
+	if fastPeriod <= 0 {
+		fastPeriod = 10
+	}
+	slowPeriod := args.SlowPeriod
+	if slowPeriod <= 0 {
+		slowPeriod = 30
+	}
+	if fastPeriod >= slowPeriod {
+		fastPeriod = slowPeriod/2 + 1
+	}
+
+	exchange := args.Exchange
+	if exchange == "" {
+		exchange = "binance"
+	}
+	interval := args.Interval
+	if interval == "" {
+		interval = "1h"
+	}
+	initialCapital := args.InitialCapital
+	if initialCapital <= 0 {
+		initialCapital = 10000
+	}
+
+	cfg := backtest.BacktestConfig{
+		Symbol:         args.Symbol,
+		Exchange:       exchange,
+		Timeframe:      backtest.Timeframe(interval),
+		InitialCapital: initialCapital,
+		Strategy:       backtest.NewMACrossStrategy(fastPeriod, slowPeriod),
+	}
+	if args.StartTime > 0 {
+		cfg.StartTime = time.UnixMilli(args.StartTime)
+	}
+	if args.EndTime > 0 {
+		cfg.EndTime = time.UnixMilli(args.EndTime)
+	}
+
+	result, err := backtest.Run(cfg)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "backtest failed: %s"}`, err)
+	}
+
+	// Serialize only JSON-safe fields
+	safeResult := struct {
+		Symbol          string  `json:"symbol"`
+		Exchange        string  `json:"exchange"`
+		Interval       string  `json:"interval"`
+		StartTime      int64   `json:"start_time"`
+		EndTime        int64   `json:"end_time"`
+		FastPeriod     int     `json:"fast_period"`
+		SlowPeriod     int     `json:"slow_period"`
+		InitialCapital float64 `json:"initial_capital"`
+		FinalEquity    float64 `json:"final_equity"`
+		TotalReturn    float64 `json:"total_return"`
+		TotalReturnPct float64 `json:"total_return_pct"`
+		MaxDrawdown    float64 `json:"max_drawdown"`
+		MaxDrawdownPct float64 `json:"max_drawdown_pct"`
+		SharpeRatio    float64 `json:"sharpe_ratio"`
+		WinRate        float64 `json:"win_rate"`
+		ProfitFactor   float64 `json:"profit_factor"`
+		TotalTrades    int     `json:"total_trades"`
+		WinTrades      int     `json:"win_trades"`
+		LoseTrades     int     `json:"lose_trades"`
+		AvgWin         float64 `json:"avg_win"`
+		AvgLoss        float64 `json:"avg_loss"`
+		DurationMs     int64   `json:"duration_ms"`
+		Status         string  `json:"status"`
+	}{
+		Symbol:         result.Config.Symbol,
+		Exchange:       result.Config.Exchange,
+		Interval:       string(result.Config.Timeframe),
+		StartTime:      result.Config.StartTime.UnixMilli(),
+		EndTime:        result.Config.EndTime.UnixMilli(),
+		FastPeriod:     fastPeriod,
+		SlowPeriod:     slowPeriod,
+		InitialCapital: result.Config.InitialCapital,
+		FinalEquity:    result.FinalEquity,
+		TotalReturn:    result.Metrics.TotalPnL,
+		TotalReturnPct: result.Metrics.TotalPnLPct,
+		MaxDrawdown:    result.Metrics.MaxDrawdown,
+		MaxDrawdownPct: result.Metrics.MaxDrawdownPct,
+		SharpeRatio:    result.Metrics.SharpeRatio,
+		WinRate:        result.Metrics.WinRate,
+		ProfitFactor:   result.Metrics.ProfitFactor,
+		TotalTrades:    result.Metrics.TotalTrades,
+		WinTrades:      result.Metrics.WinningTrades,
+		LoseTrades:     result.Metrics.LosingTrades,
+		AvgWin:         result.Metrics.AvgWin,
+		AvgLoss:        result.Metrics.AvgLoss,
+		DurationMs:     result.RunDuration.Milliseconds(),
+		Status:         "completed",
+	}
+	out, _ := json.Marshal(safeResult)
+	return string(out)
 }
 
 func (a *Agent) toolExecuteTrade(ctx context.Context, userID int64, lang, argsJSON string) string {
