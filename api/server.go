@@ -158,6 +158,9 @@ func (s *Server) setupRoutes() {
 		s.route(api, "GET", "/klines", "Candlestick data (?symbol=&interval=&limit=)", s.handleKlines)
 		s.route(api, "GET", "/symbols", "Available trading symbols", s.handleSymbols)
 
+		// Backtest (no authentication required)
+		s.route(api, "POST", "/backtest", "Run a backtest", s.handleBacktest)
+
 		// Public strategy market (no authentication required)
 		s.route(api, "GET", "/strategies/public", "Public strategy market", s.handlePublicStrategies)
 		s.route(api, "POST", "/strategies/estimate-tokens", "Estimate token usage for a strategy config", s.handleEstimateTokens)
